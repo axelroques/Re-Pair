@@ -11,17 +11,16 @@ class Tree:
 
         # Add root node
         self.nodes.append(Node(id='0',
-                               name='root',
-                               occurrences=1))
+                               name='root'))
         self.root = self.nodes[0]
 
-    def add_node(self, id, name, occurrences, parent=None):
+    def add_node(self, id, name, parent=None):
         """
         Add a node to the tree.
         """
 
         # Append a Node to the array
-        node = Node(id, name, occurrences, parent)
+        node = Node(id, name, parent)
         self.nodes.append(node)
 
         # Append a children to the parent
@@ -44,13 +43,12 @@ class Tree:
 
 class Node:
 
-    def __init__(self, id, name, occurrences, parent=None):
+    def __init__(self, id, name, parent=None):
 
         # Basic parameters
         self.id = id
         self.name = name
         self.parent = parent
-        self.occurrences = occurrences
         self.children = []
 
 
@@ -64,27 +62,26 @@ def generate_tree(results):
     tree = Tree()
 
     # Isolate results
-    pairs = [pair.split(' ')[-1] for pair in results['Pair']][1:]
-    occurrences = results['Occurrences']
+    indices = results['index'][1:]
+    rules = results['Rule'][1:]
+    exp_rules = results['Expanded Rule'][1:]
 
     # Iterate over the pairs
-    for i_pair, (pair, occurrence) in enumerate(zip(pairs, occurrences)):
+    for indice, rule, exp_rule in zip(indices, rules, exp_rules):
 
         # Try to match a number in the pair
-        content = re.findall('[1-9][0-9]*', pair)
+        content = re.findall('[1-9][0-9]*', rule)
 
         # If there are no number, the pair is a root node
         if not content:
             tree.add_node(id=str(tree.node_id),
-                          name=f"{results['Pair'][i_pair+1].split(' ')[0]}: {pair}",
-                          occurrences=occurrence,
+                          name=f"{indice}: {exp_rule}",
                           parent=tree.root)
 
         # Otherwise
         else:
             tree.add_node(id=str(tree.node_id),
-                          name=f"{results['Pair'][i_pair+1].split(' ')[0]}: {pair}",
-                          occurrences=occurrence,
+                          name=f"{indice}: {exp_rule}",
                           parent=tree.by_id(id=content[0]))
 
     return tree

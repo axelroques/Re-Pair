@@ -16,8 +16,10 @@ class Phrase:
 
         # Basic parameters
         self.n = len(phrase)
-        self.raw = phrase  # Initial phrase
-        self.phrase = phrase  # Phrase being compressed
+        self.raw = [frozenset([c]) for c in phrase]
+
+        # Phrase construction parameters
+        self.phrase = ' '.join(c for c in phrase)
         self.symbol = 1
 
         # Digram generation
@@ -31,7 +33,7 @@ class Phrase:
         Create digram instances.
         """
 
-        self.digrams = [Digram(i, c1, c2, self.raw)
+        self.digrams = [Digram(i, c1, c2)
                         for i, (c1, c2)
                         in enumerate(zip(self.raw[:-1],
                                          self.raw[1:]))]
@@ -68,11 +70,49 @@ class Phrase:
 
         return
 
-    def get_results(self):
+    def compute_results(self, data):
+        """
+        Expands the rules for better readability.
+        """
 
-        return pd.DataFrame({'Occurrences': self.results['Occurrences'],
-                             'Phrase': self.results['Phrase']},
-                            index=self.results['Pair'])
+        # Retrieve pairs from the results
+        pairs = data['Rule'][1:]
+
+        # Expand the rules
+        expanded_rules = []
+        for pair in pairs:
+
+            # Iterate over the symbols in the pair
+            symbols = []
+            for symbol in pair.split(' '):
+
+                # If that symbol contains a number, expand
+                # that rule using the expanded version
+                # of the rule at that number
+                match = re.findall('[1-9][0-9]*', symbol)
+                if match:
+                    symbols.append(expanded_rules[int(match[0])-1])
+                else:
+                    symbols.append(symbol)
+
+            expanded_rules.append(' '.join(symbol for symbol in symbols))
+
+        self.results = data
+        self.results['Expanded Rule'] = [''] + expanded_rules
+
+        return
+
+    def get_results(self):
+        """
+        Returns a pandas DataFrame with the grammar rules.
+        """
+
+        return pd.DataFrame({
+            'Rule': self.results['Rule'],
+            'Expanded Rule': self.results['Expanded Rule'],
+            'Occurrence': self.results['Occurrence'],
+            'Phrase': self.results['Phrase']
+        }, index=self.results['index'])
 
     def get_hierarchy(self):
         """
@@ -90,10 +130,7 @@ class Digram:
     Digram instance.
     """
 
-    def __init__(self, i, c1, c2, raw):
-
-        # Initial phrase
-        self.raw = raw
+    def __init__(self, i, c1, c2):
 
         # Digram parameters
         self.pos = i
@@ -101,7 +138,7 @@ class Digram:
         self.c2 = c2
 
     def __str__(self) -> str:
-        return self.c1 + self.c2
+        return f'{list(self.c1)[0]} {list(self.c2)[0]}'
 
 
 def initialize_data_structures(phrase):
@@ -137,7 +174,8 @@ def prune_positions(positions):
     diff = np.diff(positions)
 
     # Create a string with the positions in diff
-    string = ''.join([str(d) for d in diff])
+    string = ''.join([str(d) if d == 1 else '0' for d in diff])
+
     # Use regex to find all successions of '1's
     reg = [m.span() for m in re.finditer('11*', string)]
 
@@ -147,8 +185,9 @@ def prune_positions(positions):
         # Non problematic positions
         good_positions = positions[np.where(diff != 1)[0]+1]
 
+        # Return one indice out of two for successive indices
         # Transform the results into slices
-        indices = [np.arange(i[0], i[1]+1, 2, ) for i in reg]
+        indices = [np.arange(i[0], i[1]+1, 2) for i in reg]
 
         # Finally get the correct positions bad positions
         bad_positions = np.hstack([positions[ind] for ind in indices])
@@ -182,17 +221,17 @@ def replace_occurences(phrase, pair):
 
         if pos == 0:
             right_neighbour = phrase.digrams[pos+1]
-            right_neighbour.c1 = str(phrase.symbol)
+            right_neighbour.c1 = frozenset([str(phrase.symbol)])
 
-        elif pos == len(phrase.phrase)-2:  # -2 because of digram length
+        elif pos == len(phrase.digrams)-1:
             left_neighbour = phrase.digrams[pos-1]
-            left_neighbour.c2 = str(phrase.symbol)
+            left_neighbour.c2 = frozenset([str(phrase.symbol)])
 
         else:
             left_neighbour = phrase.digrams[pos-1]
             right_neighbour = phrase.digrams[pos+1]
-            left_neighbour.c2 = str(phrase.symbol)
-            right_neighbour.c1 = str(phrase.symbol)
+            left_neighbour.c2 = frozenset([str(phrase.symbol)])
+            right_neighbour.c1 = frozenset([str(phrase.symbol)])
 
     # Update the position of the digrams
     phrase.update_positions(helper)
@@ -204,8 +243,9 @@ def replace_occurences(phrase, pair):
         del phrase.digrams[pos]
 
     # Update the compressed string with the new symbol
-    phrase.phrase = phrase.phrase.split(pair)
-    phrase.phrase = str(phrase.symbol).join(phrase.phrase)
+    phrase.phrase = ' '.join(str(digram) for digram in phrase.digrams[::2])
+    phrase.phrase += list(phrase.digrams[-1].c2)[0] if len(
+        phrase.digrams) % 2 == 0 else ''
 
     # Update counts and positions of digrams
     phrase.generate_hash_tables()
@@ -228,8 +268,9 @@ def repair(phrase):
 
     # Initialize output data
     data = {
-        'Pair': [''],
-        'Occurrences': [1],
+        'index': [''],
+        'Rule': [''],
+        'Occurrence': [1],
         'Phrase': [phrase.phrase]
     }
 
@@ -246,11 +287,12 @@ def repair(phrase):
         replace_occurences(phrase, pair)
 
         # Store information
-        data['Pair'].append(f'{phrase.symbol-1} 🠖 {pair}')
-        data['Occurrences'].append(n_occurrence)
+        data['index'].append(f'R{phrase.symbol-1}')
+        data['Rule'].append(f'{pair}')
+        data['Occurrence'].append(n_occurrence)
         data['Phrase'].append(phrase.phrase)
 
     # Store results in the phrase instance
-    phrase.results = data
+    phrase.compute_results(data)
 
     return phrase
