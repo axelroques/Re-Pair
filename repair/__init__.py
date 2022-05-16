@@ -1,2 +1,2 @@
 
-from .repair import repair
+from .repair import RePair
