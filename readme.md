@@ -30,7 +30,7 @@ Process a string.
 
 ```python
 s = 'singing.do.wah.diddy.diddy.dum.diddy.do'
-phrases = repair(s)
+phrases = RePair(s)
 ```
 
 Display the resulting phrases.
